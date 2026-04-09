@@ -239,6 +239,7 @@ function CommentItem({
           lineHeight: '20px', color: '#171717', letterSpacing: '-0.078px',
           whiteSpace: 'nowrap', margin: 0, flexShrink: 0,
           fontFeatureSettings: "'ss11' 1, 'calt' 0, 'liga' 0",
+          position: 'relative', zIndex: 2,
         }}>
           {comment.name}
         </p>
