@@ -3,10 +3,12 @@
  *
  *  ENTER  (layout-morph continues from ExpandedPost)
  *   80ms  white card:    y(-10→0)    opacity(0→1)  spring s:200 d:24
- *  160ms  thread line:   scaleY(0→1) opacity(0→1)  spring s:180 d:24
- *          origin: top — line "draws" down from the avatar
+ *  160ms  thread line:   pathLength(0→1)            0.7s ease draw
  *  240ms  Dami comment:  y(8→0)      opacity(0→1)  spring s:200 d:24
  *  320ms  input bar:     y(8→0)      opacity(0→1)  spring s:200 d:24
+ *
+ *  NEW COMMENT  (user types + Enter)
+ *         comment item: scale(0.94→1) y(12→0) opacity(0→1)  spring s:320 d:26
  *
  *  EXIT   (reverse cascade)
  *    0ms  input bar:   opacity→0, y→4   (80ms ease-in)
@@ -17,15 +19,14 @@
  *  Figma node  202316:528919  (outer container)
  *  Figma node  202316:528920  (white card)
  *  Figma node  202316:528946  (comment input bar)
- * ─────────────────────────────────────────────────────────
- */
+ * ───────────────────────────────────────────────────────── */
 
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
+import { useState, useCallback, useRef } from 'react'
 import type { Post } from './ExpandedPost'
 import {
   JOHN_TONY_PARAGRAPHS,
   SPRING_SOFT,
-  SPRING_PRESS,
   EASE_IN,
 } from './ExpandedPost'
 
@@ -39,6 +40,17 @@ const CARD_SHADOW = [
   '0px 48px 48px -24px rgba(51,51,51,0.04)',
   '0px 0px 0px 1px #f5f5f5',
 ].join(', ')
+
+const COMMENT_SPRING = { type: 'spring' as const, stiffness: 320, damping: 26 }
+
+// ── Comment type ────────────────────────────────────────────
+interface Comment {
+  id: string
+  name: string
+  text: string
+  avatarSrc?: string
+  avatarBg: string
+}
 
 // ── Verified badge (same as ExpandedPost) ─────────────────
 function VerifiedBadge() {
@@ -58,39 +70,141 @@ function VerifiedBadge() {
   )
 }
 
-// ── Thread connector line (node 202316:528938) ────────────
-// Draws from below the original avatar down to Dami's avatar.
-// scaleY animates 0→1 from origin:top, giving the "drawing" effect.
+// ── Thread connector — exact Figma path, animated via pathLength ──
+// Path from thread-line.svg: vertical line with a left-hook curl at the bottom.
+// pathLength 0→1 draws it from top to bottom like a pen.
 function ThreadLine() {
   return (
-    <motion.div
+    <motion.svg
       aria-hidden="true"
+      preserveAspectRatio="none"
+      viewBox="0 0 12.6758 433"
       style={{
         position: 'absolute',
         left: 0,
         top: 30,
         width: 12,
         height: 433,
+        display: 'block',
         pointerEvents: 'none',
-        transformOrigin: 'top center',
+        overflow: 'visible',
       }}
-      initial={{ scaleY: 0, opacity: 0 }}
-      animate={{ scaleY: 1, opacity: 1, transition: { ...SPRING_SOFT, stiffness: 180, delay: 0.16 } }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1, transition: { duration: 0.01, delay: 0.16 } }}
       exit={{ opacity: 0, transition: { duration: 0.08, ease: EASE_IN, delay: 0.11 } }}
     >
-      <div style={{ position: 'absolute', inset: '0 -4.17% 0 -1.47%' }}>
-        <img
-          src="/assets/thread-line.svg"
-          alt=""
-          style={{ display: 'block', width: '100%', height: '100%', maxWidth: 'none' }}
-        />
+      <motion.path
+        d="M12.1758 0V405.909C12.1758 407.593 11.8245 409.259 11.1444 410.801L9.14361 415.334C8.42178 416.97 6.80245 418.025 5.01458 418.025H4.88023C2.76914 418.025 0.962352 416.511 0.594025 414.432L0.561683 414.249C0.321443 412.894 0.79251 411.509 1.80984 410.581C3.17386 409.337 5.21036 409.183 6.74597 410.208L7.8523 410.946C8.94312 411.674 9.75043 412.755 10.1388 414.008L10.832 416.243C11.1983 417.425 11.3846 418.654 11.3846 419.891V433"
+        stroke="#EBEBEB"
+        strokeWidth={1}
+        fill="none"
+        initial={{ pathLength: 0 }}
+        animate={{
+          pathLength: 1,
+          transition: {
+            pathLength: { duration: 0.85, ease: [0.25, 0.1, 0.2, 1], delay: 0.16 },
+          },
+        }}
+      />
+    </motion.svg>
+  )
+}
+
+// ── Single comment item ─────────────────────────────────────
+function CommentItem({
+  comment,
+  entryDelay = 0,
+}: {
+  comment: Comment
+  entryDelay?: number
+}) {
+  return (
+    <motion.div
+      layout
+      style={{
+        display: 'flex', gap: 8, alignItems: 'flex-start',
+        flexShrink: 0, width: '100%',
+      }}
+      initial={{ opacity: 0, y: 12, scale: 0.94 }}
+      animate={{
+        opacity: 1, y: 0, scale: 1,
+        transition: { ...COMMENT_SPRING, delay: entryDelay },
+      }}
+      exit={{ opacity: 0, y: 4, transition: { duration: 0.09, ease: EASE_IN } }}
+    >
+      {/* Avatar */}
+      <div style={{
+        background: comment.avatarBg,
+        border: '2px solid white',
+        borderRadius: 999,
+        flexShrink: 0,
+        width: 24,
+        height: 24,
+        position: 'relative',
+        overflow: 'hidden',
+      }}>
+        {comment.avatarSrc && (
+          <img
+            src={comment.avatarSrc}
+            alt={comment.name}
+            style={{
+              position: 'absolute', inset: 0, maxWidth: 'none', objectFit: 'cover',
+              pointerEvents: 'none', borderRadius: 999, width: '100%', height: '100%',
+            }}
+          />
+        )}
+      </div>
+
+      {/* Comment content */}
+      <div style={{
+        display: 'flex', flex: '1 0 0', flexDirection: 'column',
+        alignItems: 'flex-start', minHeight: 1, minWidth: 1, overflow: 'hidden',
+        position: 'relative',
+      }}>
+        <div style={{
+          display: 'flex', flexDirection: 'column', gap: 4,
+          alignItems: 'flex-start', flexShrink: 0, width: '100%',
+        }}>
+          <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', lineHeight: 0, flexShrink: 0 }}>
+            <p style={{
+              fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: 13,
+              lineHeight: '20px', color: '#171717', letterSpacing: '-0.078px',
+              whiteSpace: 'nowrap', margin: 0,
+              fontFeatureSettings: "'ss11' 1, 'calt' 0, 'liga' 0",
+            }}>
+              {comment.name}
+            </p>
+          </div>
+          <div style={{
+            display: 'flex', flexDirection: 'column', justifyContent: 'center',
+            lineHeight: 0, flexShrink: 0, width: '100%',
+          }}>
+            <p style={{
+              fontFamily: "'Inter', sans-serif", fontWeight: 400, fontSize: 12,
+              lineHeight: '16px', color: '#5c5c5c', margin: 0,
+              fontFeatureSettings: "'ss11' 1, 'calt' 0, 'liga' 0",
+            }}>
+              {comment.text}
+            </p>
+          </div>
+        </div>
       </div>
     </motion.div>
   )
 }
 
-// ── Comment input bar (node 202316:528946) ────────────────
-function CommentInput({ avatarSrc }: { avatarSrc?: string }) {
+// ── Comment input bar (node 202316:528946) ─────────────────
+function CommentInput({
+  avatarSrc,
+  value,
+  onChange,
+  onSubmit,
+}: {
+  avatarSrc?: string
+  value: string
+  onChange: (v: string) => void
+  onSubmit: () => void
+}) {
   return (
     <motion.div
       style={{
@@ -122,13 +236,15 @@ function CommentInput({ avatarSrc }: { avatarSrc?: string }) {
           <img
             src={avatarSrc}
             alt=""
-            style={{ position: 'absolute', inset: 0, maxWidth: 'none', objectFit: 'cover',
-              pointerEvents: 'none', borderRadius: 999, width: '100%', height: '100%' }}
+            style={{
+              position: 'absolute', inset: 0, maxWidth: 'none', objectFit: 'cover',
+              pointerEvents: 'none', borderRadius: 999, width: '100%', height: '100%',
+            }}
           />
         )}
       </div>
 
-      {/* Text input pill (node I202316:528948;266:5238) */}
+      {/* Text input pill */}
       <div style={{
         background: 'white',
         border: '1px solid #ebebeb',
@@ -138,56 +254,138 @@ function CommentInput({ avatarSrc }: { avatarSrc?: string }) {
         gap: 8,
         paddingLeft: 12,
         paddingRight: 10,
-        paddingTop: 10,
-        paddingBottom: 10,
         height: 32,
-        width: 300,
+        flex: '1 0 0',
+        minWidth: 0,
         overflow: 'hidden',
         boxSizing: 'border-box',
         boxShadow: '0px 1px 2px 0px rgba(10,13,20,0.03)',
-        flexShrink: 0,
         position: 'relative',
       }}>
-        <p style={{
-          flex: '1 0 0',
-          fontFamily: "'Inter', sans-serif",
-          fontWeight: 400,
-          fontSize: 13,
-          lineHeight: '20px',
-          color: '#a3a3a3',
-          letterSpacing: '-0.078px',
-          margin: 0,
-          fontFeatureSettings: "'ss11' 1, 'calt' 0, 'liga' 0",
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-        }}>
-          Type comment
-        </p>
+        <input
+          type="text"
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && value.trim()) {
+              e.preventDefault()
+              onSubmit()
+            }
+          }}
+          placeholder="Type comment"
+          style={{
+            flex: '1 0 0',
+            border: 'none',
+            outline: 'none',
+            background: 'transparent',
+            fontFamily: "'Inter', sans-serif",
+            fontWeight: 400,
+            fontSize: 13,
+            lineHeight: '20px',
+            color: '#171717',
+            letterSpacing: '-0.078px',
+            fontFeatureSettings: "'ss11' 1, 'calt' 0, 'liga' 0",
+            minWidth: 0,
+          }}
+        />
 
-        {/* Emoji icon (node I202316:528948;266:5242) — 20px */}
-        <div style={{ overflow: 'hidden', flexShrink: 0, width: 20, height: 20, position: 'relative' }}>
-          <div style={{ position: 'absolute', inset: '12.5%' }}>
-            <img src="/assets/icon-emoji.svg" alt="" style={{
-              position: 'absolute', display: 'block', maxWidth: 'none', width: '100%', height: '100%'
-            }} />
-          </div>
-        </div>
+        {/* Send button — appears when there's text */}
+        <AnimatePresence>
+          {value.trim() ? (
+            <motion.button
+              key="send"
+              onClick={onSubmit}
+              aria-label="Send comment"
+              style={{
+                border: 'none',
+                background: 'none',
+                cursor: 'pointer',
+                padding: 0,
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 20,
+                height: 20,
+              }}
+              initial={{ opacity: 0, scale: 0.6 }}
+              animate={{ opacity: 1, scale: 1, transition: { type: 'spring', stiffness: 400, damping: 22 } }}
+              exit={{ opacity: 0, scale: 0.6, transition: { duration: 0.12 } }}
+              whileTap={{ scale: 0.85 }}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path
+                  d="M13.5 8L2.5 8M13.5 8L9.5 4M13.5 8L9.5 12"
+                  stroke="#171717"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </motion.button>
+          ) : (
+            <motion.div
+              key="emoji"
+              style={{ overflow: 'hidden', flexShrink: 0, width: 20, height: 20, position: 'relative' }}
+              initial={{ opacity: 0, scale: 0.6 }}
+              animate={{ opacity: 1, scale: 1, transition: { type: 'spring', stiffness: 400, damping: 22 } }}
+              exit={{ opacity: 0, scale: 0.6, transition: { duration: 0.12 } }}
+            >
+              <div style={{ position: 'absolute', inset: '12.5%' }}>
+                <img src="/assets/icon-emoji.svg" alt="" style={{
+                  position: 'absolute', display: 'block', maxWidth: 'none', width: '100%', height: '100%',
+                }} />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </motion.div>
   )
 }
 
-// ── Main export ────────────────────────────────────────────
+// ── Main export ─────────────────────────────────────────────
+
+const INITIAL_COMMENTS: Comment[] = [
+  {
+    id: 'dami-initial',
+    name: 'Dami',
+    text: '2016 me had no systems, no strategy… just vibes and somehow less stress 😭',
+    avatarSrc: '/assets/avatar-dami.png',
+    avatarBg: '#ffecc0',
+  },
+]
 
 export default function CommentsView({ post, onClose }: { post: Post; onClose: () => void }) {
   const isJohnTony = post.id === 1
   const paragraphs = isJohnTony ? JOHN_TONY_PARAGRAPHS : post.fullText.map(t => [t])
 
+  const [comments, setComments] = useState<Comment[]>(INITIAL_COMMENTS)
+  const [inputValue, setInputValue] = useState('')
+  const idCounter = useRef(0)
+
+  const handleSubmit = useCallback(() => {
+    const text = inputValue.trim()
+    if (!text) return
+    idCounter.current += 1
+    setComments(prev => [
+      ...prev,
+      {
+        id: `comment-${idCounter.current}`,
+        name: post.name,
+        text,
+        avatarSrc: post.avatarImg,
+        avatarBg: '#ebebeb',
+      },
+    ])
+    setInputValue('')
+  }, [inputValue, post.name, post.avatarImg])
+
   return (
     <>
       {/* ── White card (node 202316:528920) ──────────── */}
       <motion.div
+        layout
         style={{
           display: 'flex',
           flexDirection: 'column',
@@ -229,9 +427,11 @@ export default function CommentsView({ post, onClose }: { post: Post; onClose: (
         </motion.button>
 
         {/* ── Original post section (node 202316:528921) ── */}
-        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', position: 'relative', flexShrink: 0, width: '100%' }}>
-
-          {/* Thread connector line (node 202316:528938) */}
+        <div style={{
+          display: 'flex', gap: 8, alignItems: 'flex-start',
+          position: 'relative', flexShrink: 0, width: '100%',
+        }}>
+          {/* Thread connector — draws down behind the comment below */}
           <ThreadLine />
 
           {/* Avatar (node 202316:528922) */}
@@ -241,8 +441,10 @@ export default function CommentsView({ post, onClose }: { post: Post; onClose: (
           }}>
             {post.avatarImg && (
               <img src={post.avatarImg} alt={post.name}
-                style={{ position: 'absolute', inset: 0, maxWidth: 'none', objectFit: 'cover',
-                  pointerEvents: 'none', borderRadius: 999, width: '100%', height: '100%' }} />
+                style={{
+                  position: 'absolute', inset: 0, maxWidth: 'none', objectFit: 'cover',
+                  pointerEvents: 'none', borderRadius: 999, width: '100%', height: '100%',
+                }} />
             )}
           </div>
 
@@ -252,11 +454,16 @@ export default function CommentsView({ post, onClose }: { post: Post; onClose: (
             alignItems: 'flex-start', minHeight: 1, minWidth: 1, overflow: 'hidden',
             position: 'relative',
           }}>
-
             {/* Name + badge (node 202316:528924/925) */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start', flexShrink: 0, width: '100%' }}>
+            <div style={{
+              display: 'flex', flexDirection: 'column', gap: 4,
+              alignItems: 'flex-start', flexShrink: 0, width: '100%',
+            }}>
               <div style={{ display: 'flex', gap: 3, alignItems: 'center', flexShrink: 0 }}>
-                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', lineHeight: 0, flexShrink: 0 }}>
+                <div style={{
+                  display: 'flex', flexDirection: 'column', justifyContent: 'center',
+                  lineHeight: 0, flexShrink: 0,
+                }}>
                   <p style={{
                     fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: 14,
                     lineHeight: '20px', color: '#171717', letterSpacing: '-0.084px',
@@ -315,58 +522,16 @@ export default function CommentsView({ post, onClose }: { post: Post; onClose: (
           </div>
         </div>
 
-        {/* ── Dami's comment (node 202316:528939) ─────── */}
-        <motion.div
-          style={{
-            display: 'flex', gap: 8, alignItems: 'flex-start',
-            flexShrink: 0, width: 316,
-          }}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0, transition: { ...SPRING_SOFT, delay: 0.24 } }}
-          exit={{ opacity: 0, y: 4, transition: { duration: 0.09, ease: EASE_IN, delay: 0.055 } }}
-        >
-          {/* Dami's avatar (node 202316:528940) — yellow #ffecc0 */}
-          <div style={{
-            background: '#ffecc0', border: '2px solid white', borderRadius: 999,
-            flexShrink: 0, width: 24, height: 24, position: 'relative', overflow: 'hidden',
-          }}>
-            <img src="/assets/avatar-dami.png" alt="Dami"
-              style={{ position: 'absolute', inset: 0, maxWidth: 'none', objectFit: 'cover',
-                pointerEvents: 'none', borderRadius: 999, width: '100%', height: '100%' }} />
-          </div>
-
-          {/* Comment content (node 202316:528941) */}
-          <div style={{
-            display: 'flex', flex: '1 0 0', flexDirection: 'column',
-            alignItems: 'flex-start', minHeight: 1, minWidth: 1, overflow: 'hidden',
-            position: 'relative',
-          }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start', flexShrink: 0, width: '100%' }}>
-              {/* Commenter name (node 202316:528944) */}
-              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', lineHeight: 0, flexShrink: 0 }}>
-                <p style={{
-                  fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: 13,
-                  lineHeight: '20px', color: '#171717', letterSpacing: '-0.078px',
-                  whiteSpace: 'nowrap', margin: 0,
-                  fontFeatureSettings: "'ss11' 1, 'calt' 0, 'liga' 0",
-                }}>
-                  Dami
-                </p>
-              </div>
-
-              {/* Comment text (node 202316:528945) */}
-              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', lineHeight: 0, flexShrink: 0, width: '100%' }}>
-                <p style={{
-                  fontFamily: "'Inter', sans-serif", fontWeight: 400, fontSize: 12,
-                  lineHeight: '16px', color: '#5c5c5c', margin: 0,
-                  fontFeatureSettings: "'ss11' 1, 'calt' 0, 'liga' 0",
-                }}>
-                  2016 me had no systems, no strategy… just vibes and somehow less stress 😭
-                </p>
-              </div>
-            </div>
-          </div>
-        </motion.div>
+        {/* ── Comments list (dynamic, animated) ─────────── */}
+        <AnimatePresence mode="popLayout">
+          {comments.map((comment, i) => (
+            <CommentItem
+              key={comment.id}
+              comment={comment}
+              entryDelay={comment.id === 'dami-initial' ? 0.24 : 0}
+            />
+          ))}
+        </AnimatePresence>
 
         {/* Inner bottom shadow vignette */}
         <div aria-hidden="true" style={{
@@ -377,7 +542,12 @@ export default function CommentsView({ post, onClose }: { post: Post; onClose: (
       </motion.div>
 
       {/* ── Comment input bar (node 202316:528946) ─── */}
-      <CommentInput avatarSrc={post.avatarImg} />
+      <CommentInput
+        avatarSrc={post.avatarImg}
+        value={inputValue}
+        onChange={setInputValue}
+        onSubmit={handleSubmit}
+      />
     </>
   )
 }

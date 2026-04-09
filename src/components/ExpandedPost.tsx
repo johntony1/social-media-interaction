@@ -20,7 +20,8 @@
  * ─────────────────────────────────────────────────────────
  */
 
-import { motion } from 'framer-motion'
+import { motion, useAnimation } from 'framer-motion'
+import { useCallback, useState } from 'react'
 
 // ── Spring / easing ────────────────────────────────────────
 export const SPRING_SOFT  = { type: 'spring' as const, stiffness: 200, damping: 24 }
@@ -68,15 +69,121 @@ function ChatIcon() {
   )
 }
 
-/** BookmarkSimple: inset 12.5% 21.88% 9.38% 21.88% */
-function BookmarkIcon() {
+/* ─────────────────────────────────────────────────────────
+ * BOOKMARK FLAP — ANIMATION STORYBOARD
+ *
+ *  Icons: MingCute BookmarkLine (unsaved) → BookmarkFill (saved)
+ *  Hinge: 44% down the icon — bottom 56% is the visible flap zone
+ *
+ *    0ms  click
+ *    0ms  icon pops      scale 1→1.1→1          spring 280ms
+ *    0ms  flap folds     rotateX 0→−90°          160ms ease-in (folds away)
+ *  160ms  icon SWAPS     line↔fill  gray↔amber   instant (flap is edge-on, invisible)
+ *  160ms  flap unfolds   rotateX −90°→25°→−6°→0° spring bounce 460ms
+ * ─────────────────────────────────────────────────────────
+ */
+
+// MingCute BookmarkLine — outline (viewBox 0 0 24 24)
+const MC_LINE_PATH =
+  'M4 5a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v16.028c0 1.22-1.38 1.93-2.372 1.221L12 18.229l-5.628 4.02c-.993.71-2.372 0-2.372-1.22zm3-1a1 1 0 0 0-1 1v15.057l5.128-3.663a1.5 1.5 0 0 1 1.744 0L18 20.057V5a1 1 0 0 0-1-1z'
+
+// MingCute BookmarkFill — solid (viewBox 0 0 24 24)
+const MC_FILL_PATH =
+  'M4 5a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v16.028c0 1.22-1.38 1.93-2.372 1.221L12 18.229l-5.628 4.02c-.993.71-2.372 0-2.372-1.22z'
+
+// Hinge at 44% — exposes the bottom 56% as a big, clearly visible flap
+const HINGE = '44%'
+
+const TIMING = {
+  fold:    0.16,  // rotateX 0 → −90° (edge-on, invisible)
+  unfold:  0.46,  // rotateX spring back with bounce
+  pop:     0.28,  // whole-icon scale pop
+}
+
+const EASE_FOLD = [0.4, 0, 1, 1]    as const
+const EASE_POP  = [0.34, 1.56, 0.64, 1] as const
+
+function BookmarkSvg({ path, fill }: { path: string; fill: string }) {
   return (
-    <div style={{ width: 20, height: 20, position: 'relative', flexShrink: 0 }}>
-      <div style={{ position: 'absolute', top: '12.5%', right: '21.88%', bottom: '9.38%', left: '21.88%' }}>
-        <img src="/assets/icon-bookmark.svg" alt="" aria-hidden="true"
-          style={{ position: 'absolute', inset: 0, display: 'block', width: '100%', height: '100%', maxWidth: 'none' }} />
-      </div>
-    </div>
+    <svg viewBox="0 0 24 24" fill="none" style={{ display: 'block', width: '100%', height: '100%' }}>
+      <path d={path} fill={fill} />
+    </svg>
+  )
+}
+
+function BookmarkButton() {
+  const [saved, setSaved] = useState(false)
+  const iconCtrl = useAnimation()
+  const flapCtrl = useAnimation()
+
+  const handleClick = useCallback(async () => {
+    // Whole-icon pop (concurrent with fold)
+    iconCtrl.start({
+      scale: [1, 1.1, 1],
+      transition: { duration: TIMING.pop, ease: EASE_POP },
+    })
+
+    // Phase 1 — flap rotates away from viewer (folds toward screen)
+    await flapCtrl.start({
+      rotateX: -90,
+      transition: { duration: TIMING.fold, ease: EASE_FOLD },
+    })
+
+    // Swap icons while flap is edge-on (zero visible height)
+    setSaved(s => !s)
+
+    // Phase 2 — flap springs forward with overshoot
+    flapCtrl.start({
+      rotateX: [-90, 25, -6, 0],
+      transition: {
+        duration: TIMING.unfold,
+        ease: [0.34, 1.56, 0.64, 1],
+        times: [0, 0.5, 0.75, 1],
+      },
+    })
+  }, [iconCtrl, flapCtrl])
+
+  const path  = saved ? MC_FILL_PATH : MC_LINE_PATH
+  const color = saved ? '#F59E0B'    : '#a4a4a4'
+
+  return (
+    <button
+      aria-label={saved ? 'Remove bookmark' : 'Bookmark'}
+      onClick={handleClick}
+      style={{
+        display: 'flex', alignItems: 'center', flexShrink: 0,
+        background: 'none', border: 'none', cursor: 'pointer',
+        padding: 0, outline: 'none',
+      }}
+    >
+      <motion.div
+        animate={iconCtrl}
+        style={{ width: 20, height: 20, position: 'relative', flexShrink: 0 }}
+      >
+        {/* ── Body — top 44%, static ── */}
+        <div style={{
+          position: 'absolute', inset: 0,
+          clipPath: `polygon(0 0, 100% 0, 100% ${HINGE}, 0 ${HINGE})`,
+        }}>
+          <BookmarkSvg path={path} fill={color} />
+        </div>
+
+        {/* ── Flap — bottom 56%, rotates on the hinge ──
+              perspective set on THIS element so the 3D depth is relative
+              to the flap size (not the whole page), making the flip dramatic  */}
+        <motion.div
+          animate={flapCtrl}
+          style={{
+            position: 'absolute', inset: 0,
+            clipPath: `polygon(0 ${HINGE}, 100% ${HINGE}, 100% 100%, 0 100%)`,
+            transformOrigin: `center ${HINGE}`,
+            transformPerspective: 60,
+          }}
+        >
+          <BookmarkSvg path={path} fill={color} />
+        </motion.div>
+      </motion.div>
+    </button>
   )
 }
 
@@ -553,18 +660,7 @@ export default function ExpandedPost({ post, onClose, onOpenComments }: {
 
         {/* Right: bookmark + export (node 202316:528911) */}
         <div style={{ display: 'flex', gap: 18, alignItems: 'center', justifyContent: 'flex-end', flexShrink: 0 }}>
-          <motion.button
-            aria-label="Bookmark"
-            style={{
-              display: 'flex', alignItems: 'center', flexShrink: 0,
-              background: 'none', border: 'none', cursor: 'pointer',
-              padding: 0, outline: 'none',
-            }}
-            whileTap={{ scale: 0.88 }}
-            transition={SPRING_PRESS}
-          >
-            <BookmarkIcon />
-          </motion.button>
+          <BookmarkButton />
           <motion.button
             aria-label="Share"
             style={{
