@@ -1,4 +1,14 @@
 /* ─────────────────────────────────────────────────────────
+ * COMMENTS VIEW + HEART REACTION — ANIMATION STORYBOARD
+ *
+ *  HEART REACTION (on bubble click):
+ *    0ms   anchor heart:  opacity 0→1, scale 0.95→1  (200ms ease-out)
+ *    0ms   heart A (100%): y 0→64px, x→+3px  (480ms ease-in)
+ *   90ms   heart B  (75%): y 0→64px, x→−4px  (460ms ease-in)
+ *  175ms   heart C  (55%): y 0→64px, x→+2px  (510ms ease-in)
+ *  Hearts absorbed via overflow:hidden clip at zone bottom (= bubble top edge)
+ *  Ripple: scale 0.8→1.4, opacity 0.2→0, 400ms ease-out, fires on absorption
+ *
  * COMMENTS VIEW — ANIMATION STORYBOARD
  *
  *  ENTER  (layout-morph continues from ExpandedPost)
@@ -103,11 +113,28 @@ function ThreadLine() {
         animate={{
           pathLength: 1,
           transition: {
-            pathLength: { duration: 0.85, ease: [0.25, 0.1, 0.2, 1], delay: 0.16 },
+            pathLength: { duration: 1.5, ease: [0.25, 0.1, 0.2, 1], delay: 0.16 },
           },
         }}
       />
     </motion.svg>
+  )
+}
+
+// ── Heart reaction config ──────────────────────────────────
+const HEART_PARTICLES = [
+  { startRight: 4,  dx:  3, duration: 480, delay:   0, opacity: 1.00, size: 12 },
+  { startRight: 9,  dx: -4, duration: 460, delay:  90, opacity: 0.75, size: 10 },
+  { startRight: 2,  dx:  2, duration: 510, delay: 175, opacity: 0.55, size:  9 },
+] as const
+const ZONE_H = 50 // px — travel zone above bubble
+
+function HeartSvg({ size, opacity }: { size: number; opacity: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="#ef4444"
+      style={{ display: 'block', opacity }}>
+      <path d="M12 21.593c-5.63-5.539-11-10.297-11-14.402 0-3.791 3.068-5.191 5.281-5.191 1.312 0 4.151.501 5.719 4.457 1.59-3.968 4.464-4.447 5.726-4.447 2.54 0 5.274 1.621 5.274 5.181 0 4.069-5.136 8.625-11 14.402z" />
+    </svg>
   )
 }
 
@@ -119,75 +146,144 @@ function CommentItem({
   comment: Comment
   entryDelay?: number
 }) {
+  const [liked,  setLiked]  = useState(false)
+  const [round,  setRound]  = useState(0)        // increments each click → re-keys hearts
+  const [ripples, setRipples] = useState<number[]>([])
+  const rippleCounter = useRef(0)
+
+  const handleLike = useCallback(() => {
+    setLiked(true)
+    setRound(r => r + 1)
+
+    // Fire a ripple when each heart is absorbed (delay + travel duration)
+    HEART_PARTICLES.forEach(h => {
+      setTimeout(() => {
+        const id = ++rippleCounter.current
+        setRipples(prev => [...prev, id])
+        setTimeout(() => setRipples(prev => prev.filter(r => r !== id)), 500)
+      }, h.delay + h.duration)
+    })
+  }, [])
+
   return (
     <motion.div
       layout
-      style={{
-        display: 'flex', gap: 8, alignItems: 'flex-start',
-        flexShrink: 0, width: '100%',
-      }}
+      style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexShrink: 0, width: '100%' }}
       initial={{ opacity: 0, y: 12, scale: 0.94 }}
-      animate={{
-        opacity: 1, y: 0, scale: 1,
-        transition: { ...COMMENT_SPRING, delay: entryDelay },
-      }}
+      animate={{ opacity: 1, y: 0, scale: 1, transition: { ...COMMENT_SPRING, delay: entryDelay } }}
       exit={{ opacity: 0, y: 4, transition: { duration: 0.09, ease: EASE_IN } }}
     >
       {/* Avatar */}
       <div style={{
-        background: comment.avatarBg,
-        border: '2px solid white',
-        borderRadius: 999,
-        flexShrink: 0,
-        width: 24,
-        height: 24,
-        position: 'relative',
-        overflow: 'hidden',
+        background: comment.avatarBg, border: '2px solid white', borderRadius: 999,
+        flexShrink: 0, width: 24, height: 24, position: 'relative', overflow: 'hidden',
       }}>
         {comment.avatarSrc && (
-          <img
-            src={comment.avatarSrc}
-            alt={comment.name}
-            style={{
-              position: 'absolute', inset: 0, maxWidth: 'none', objectFit: 'cover',
-              pointerEvents: 'none', borderRadius: 999, width: '100%', height: '100%',
-            }}
-          />
+          <img src={comment.avatarSrc} alt={comment.name} style={{
+            position: 'absolute', inset: 0, maxWidth: 'none', objectFit: 'cover',
+            pointerEvents: 'none', borderRadius: 999, width: '100%', height: '100%',
+          }} />
         )}
       </div>
 
-      {/* Comment content */}
+      {/* Content: name + bubble */}
       <div style={{
-        display: 'flex', flex: '1 0 0', flexDirection: 'column',
-        alignItems: 'flex-start', minHeight: 1, minWidth: 1, overflow: 'hidden',
-        position: 'relative',
+        display: 'flex', flex: '1 0 0', flexDirection: 'column', gap: 4,
+        alignItems: 'flex-start', minWidth: 0, position: 'relative',
       }}>
-        <div style={{
-          display: 'flex', flexDirection: 'column', gap: 4,
-          alignItems: 'flex-start', flexShrink: 0, width: '100%',
+        {/* Name */}
+        <p style={{
+          fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: 13,
+          lineHeight: '20px', color: '#171717', letterSpacing: '-0.078px',
+          whiteSpace: 'nowrap', margin: 0, flexShrink: 0,
+          fontFeatureSettings: "'ss11' 1, 'calt' 0, 'liga' 0",
         }}>
-          <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', lineHeight: 0, flexShrink: 0 }}>
-            <p style={{
-              fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: 13,
-              lineHeight: '20px', color: '#171717', letterSpacing: '-0.078px',
-              whiteSpace: 'nowrap', margin: 0,
-              fontFeatureSettings: "'ss11' 1, 'calt' 0, 'liga' 0",
-            }}>
-              {comment.name}
-            </p>
-          </div>
+          {comment.name}
+        </p>
+
+        {/* ── Chat bubble ── */}
+        <div
+          onClick={handleLike}
+          style={{
+            position: 'relative',
+            background: '#f5f4f2',
+            borderRadius: 10,
+            padding: '7px 10px',
+            cursor: 'pointer',
+            userSelect: 'none',
+            maxWidth: '100%',
+          }}
+        >
+          {/* Heart travel zone — clipped container above bubble.
+              overflow:hidden absorbs hearts as they cross the bottom edge. */}
           <div style={{
-            display: 'flex', flexDirection: 'column', justifyContent: 'center',
-            lineHeight: 0, flexShrink: 0, width: '100%',
+            position: 'absolute', bottom: '100%', right: 8,
+            width: 26, height: ZONE_H,
+            overflow: 'hidden', pointerEvents: 'none', zIndex: 10,
           }}>
-            <p style={{
-              fontFamily: "'Inter', sans-serif", fontWeight: 400, fontSize: 12,
-              lineHeight: '16px', color: '#5c5c5c', margin: 0,
-              fontFeatureSettings: "'ss11' 1, 'calt' 0, 'liga' 0",
-            }}>
-              {comment.text}
-            </p>
+            {round > 0 && HEART_PARTICLES.map((h, i) => (
+              <motion.div
+                key={`${round}-${i}`}
+                style={{ position: 'absolute', top: 0, right: h.startRight }}
+                initial={{ y: 0, x: 0 }}
+                animate={{ y: ZONE_H + 16, x: h.dx }}
+                transition={{
+                  y: { delay: h.delay / 1000, duration: h.duration / 1000, ease: [0.4, 0, 1, 1] },
+                  x: { delay: h.delay / 1000, duration: h.duration / 1000, ease: 'easeInOut' },
+                }}
+              >
+                <HeartSvg size={h.size} opacity={h.opacity} />
+              </motion.div>
+            ))}
           </div>
+
+          {/* Ripples — soft pink circles that expand and fade on absorption */}
+          <AnimatePresence>
+            {ripples.map(id => (
+              <motion.div
+                key={id}
+                style={{
+                  position: 'absolute', top: -5, right: 4,
+                  width: 18, height: 18, borderRadius: '50%',
+                  background: 'rgba(239,68,68,0.22)',
+                  pointerEvents: 'none', zIndex: 2, transformOrigin: 'center',
+                }}
+                initial={{ scale: 0.8, opacity: 0.2 }}
+                animate={{ scale: 1.4, opacity: 0 }}
+                exit={{}}
+                transition={{ duration: 0.4, ease: 'easeOut' }}
+              />
+            ))}
+          </AnimatePresence>
+
+          {/* Anchor heart badge — appears on first like, stays */}
+          <AnimatePresence>
+            {liked && (
+              <motion.div
+                style={{
+                  position: 'absolute', top: -9, right: -7, zIndex: 3,
+                  pointerEvents: 'none', background: 'white', borderRadius: '50%',
+                  width: 18, height: 18,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: '0 0 0 1.5px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.08)',
+                }}
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
+              >
+                <HeartSvg size={10} opacity={1} />
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Comment text */}
+          <p style={{
+            fontFamily: "'Inter', sans-serif", fontWeight: 400, fontSize: 12,
+            lineHeight: '16px', color: '#5c5c5c', margin: 0,
+            fontFeatureSettings: "'ss11' 1, 'calt' 0, 'liga' 0",
+          }}>
+            {comment.text}
+          </p>
         </div>
       </div>
     </motion.div>
@@ -365,12 +461,7 @@ export default function CommentsView({ post, onClose }: { post: Post; onClose: (
   const [inputValue, setInputValue] = useState('')
   const idCounter = useRef(0)
   const [photoScrollRef, photoTilt, photoElev] = useScrollTilt()
-  const photoY      = useTransform(photoElev, [0, 1], [0, -6])
-  const photoShadow = useTransform(
-    photoElev,
-    [0, 1],
-    ['0px 2px 6px rgba(0,0,0,0.08)', '0px 14px 28px rgba(0,0,0,0.22)']
-  )
+  const photoY = useTransform(photoElev, [0, 1], [0, -6])
 
   const handleSubmit = useCallback(() => {
     const text = inputValue.trim()
@@ -527,7 +618,6 @@ export default function CommentsView({ post, onClose }: { post: Post; onClose: (
                       borderRadius: 12.915, overflow: 'hidden', position: 'relative',
                       rotate: photoTilt,
                       y: photoY,
-                      boxShadow: photoShadow,
                       willChange: 'transform',
                       scrollSnapAlign: 'center',
                     }}

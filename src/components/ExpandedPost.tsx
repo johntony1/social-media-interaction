@@ -293,12 +293,7 @@ export default function ExpandedPost({ post, onClose, onOpenComments }: {
   const isJohnTony = post.id === 1
   const paragraphs = isJohnTony ? JOHN_TONY_PARAGRAPHS : post.fullText.map(t => [t])
   const [photoScrollRef, photoTilt, photoElev] = useScrollTilt()
-  const photoY      = useTransform(photoElev, [0, 1], [0, -6])
-  const photoShadow = useTransform(
-    photoElev,
-    [0, 1],
-    ['0px 2px 6px rgba(0,0,0,0.08)', '0px 14px 28px rgba(0,0,0,0.22)']
-  )
+  const photoY = useTransform(photoElev, [0, 1], [0, -6])
 
   return (
     <>
@@ -509,7 +504,6 @@ export default function ExpandedPost({ post, onClose, onOpenComments }: {
                       position: 'relative',
                       rotate: photoTilt,
                       y: photoY,
-                      boxShadow: photoShadow,
                       willChange: 'transform',
                       scrollSnapAlign: 'center',
                     }}
