@@ -20,8 +20,9 @@
  * ─────────────────────────────────────────────────────────
  */
 
-import { motion, useAnimation } from 'framer-motion'
+import { motion, useAnimation, useTransform } from 'framer-motion'
 import { useCallback, useState } from 'react'
+import { useScrollTilt } from '../hooks/useScrollTilt'
 
 // ── Spring / easing ────────────────────────────────────────
 export const SPRING_SOFT  = { type: 'spring' as const, stiffness: 200, damping: 24 }
@@ -289,9 +290,15 @@ export default function ExpandedPost({ post, onClose, onOpenComments }: {
   onClose: () => void
   onOpenComments: () => void
 }) {
-  // Use exact Figma paragraphs for the first post (John tony), fall back to post.fullText for others
   const isJohnTony = post.id === 1
   const paragraphs = isJohnTony ? JOHN_TONY_PARAGRAPHS : post.fullText.map(t => [t])
+  const [photoScrollRef, photoTilt, photoElev] = useScrollTilt()
+  const photoY      = useTransform(photoElev, [0, 1], [0, -6])
+  const photoShadow = useTransform(
+    photoElev,
+    [0, 1],
+    ['0px 2px 6px rgba(0,0,0,0.08)', '0px 14px 28px rgba(0,0,0,0.22)']
+  )
 
   return (
     <>
@@ -453,23 +460,21 @@ export default function ExpandedPost({ post, onClose, onOpenComments }: {
               </motion.div>
             </div>
 
-            {/* Photo strip container (node 202316:528892) — w-[520px], animated */}
+            {/* Photo strip container (node 202316:528892) — animated entrance */}
             <motion.div
+              ref={photoScrollRef}
               style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'flex-start',
-                position: 'relative',
-                flexShrink: 0,
-                // overflow scroll to expose all 3 photos (extends beyond content column)
+                alignSelf: 'stretch',
                 overflowX: 'auto',
                 overflowY: 'hidden',
                 scrollbarWidth: 'none',
-                // bleed to card edge: negate left padding+avatar+gap and right padding
-                marginLeft: -40,   // -(16 card padding + 24 avatar + 8 gap) relative to content col
+                marginLeft: -40,
                 marginRight: -16,
                 paddingLeft: 40,
-                paddingRight: 16,
+                paddingRight: 100,
+                paddingTop: 10,
+                marginTop: -10,
+                scrollSnapType: 'x proximity',
               }}
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0, transition: { ...SPRING_SOFT, delay: 0.24 } }}
@@ -479,7 +484,7 @@ export default function ExpandedPost({ post, onClose, onOpenComments }: {
                 .photo-strip-scroll::-webkit-scrollbar { display: none; }
               `}</style>
 
-              {/* Photo row (node 202316:528893) — fixed 520px width, scrollable */}
+              {/* Photo row — fixed 520px width */}
               <div
                 className="photo-strip-scroll"
                 style={{
@@ -491,65 +496,35 @@ export default function ExpandedPost({ post, onClose, onOpenComments }: {
                   width: 520,
                 }}
               >
-                {/* Photo 1 (node 202316:528894) */}
-                <div style={{
-                  height: 180,
-                  position: 'relative',
-                  borderRadius: 12.915,
-                  flexShrink: 0,
-                  width: 161.435,
-                  overflow: 'hidden',
-                }}>
-                  <img
-                    src={post.photos[0]}
-                    alt=""
+                {/* Photos — shared tilt driven by scroll velocity */}
+                {post.photos.map((src, i) => (
+                  <motion.div
+                    key={i}
                     style={{
-                      position: 'absolute', inset: 0, maxWidth: 'none',
-                      objectFit: 'cover', pointerEvents: 'none',
-                      borderRadius: 12.915, width: '100%', height: '100%',
+                      height: 180,
+                      width: 161.435,
+                      flexShrink: 0,
+                      borderRadius: 12.915,
+                      overflow: 'hidden',
+                      position: 'relative',
+                      rotate: photoTilt,
+                      y: photoY,
+                      boxShadow: photoShadow,
+                      willChange: 'transform',
+                      scrollSnapAlign: 'center',
                     }}
-                  />
-                </div>
-
-                {/* Photo 2 (node 202316:528895) */}
-                <div style={{
-                  height: 180,
-                  position: 'relative',
-                  borderRadius: 12.915,
-                  flexShrink: 0,
-                  width: 161.435,
-                  overflow: 'hidden',
-                }}>
-                  <img
-                    src={post.photos[1]}
-                    alt=""
-                    style={{
-                      position: 'absolute', inset: 0, maxWidth: 'none',
-                      objectFit: 'cover', pointerEvents: 'none',
-                      borderRadius: 12.915, width: '100%', height: '100%',
-                    }}
-                  />
-                </div>
-
-                {/* Photo 3 (node 202316:528896) */}
-                <div style={{
-                  height: 180,
-                  position: 'relative',
-                  borderRadius: 12.915,
-                  flexShrink: 0,
-                  width: 161.435,
-                  overflow: 'hidden',
-                }}>
-                  <img
-                    src={post.photos[2]}
-                    alt=""
-                    style={{
-                      position: 'absolute', inset: 0, maxWidth: 'none',
-                      objectFit: 'cover', pointerEvents: 'none',
-                      borderRadius: 12.915, width: '100%', height: '100%',
-                    }}
-                  />
-                </div>
+                  >
+                    <img
+                      src={src}
+                      alt=""
+                      style={{
+                        position: 'absolute', inset: 0, maxWidth: 'none',
+                        objectFit: 'cover', pointerEvents: 'none',
+                        width: '100%', height: '100%',
+                      }}
+                    />
+                  </motion.div>
+                ))}
 
                 {/* Mute nav button (node 202316:528897)
                     Figma: left-[calc(50%+290.85px)] -translate-x-1/2 bottom-[30px]

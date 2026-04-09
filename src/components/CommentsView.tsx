@@ -21,8 +21,9 @@
  *  Figma node  202316:528946  (comment input bar)
  * ───────────────────────────────────────────────────────── */
 
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, useTransform } from 'framer-motion'
 import { useState, useCallback, useRef } from 'react'
+import { useScrollTilt } from '../hooks/useScrollTilt'
 import type { Post } from './ExpandedPost'
 import {
   JOHN_TONY_PARAGRAPHS,
@@ -363,6 +364,13 @@ export default function CommentsView({ post, onClose }: { post: Post; onClose: (
   const [comments, setComments] = useState<Comment[]>(INITIAL_COMMENTS)
   const [inputValue, setInputValue] = useState('')
   const idCounter = useRef(0)
+  const [photoScrollRef, photoTilt, photoElev] = useScrollTilt()
+  const photoY      = useTransform(photoElev, [0, 1], [0, -6])
+  const photoShadow = useTransform(
+    photoElev,
+    [0, 1],
+    ['0px 2px 6px rgba(0,0,0,0.08)', '0px 14px 28px rgba(0,0,0,0.22)']
+  )
 
   const handleSubmit = useCallback(() => {
     const text = inputValue.trim()
@@ -499,23 +507,36 @@ export default function CommentsView({ post, onClose }: { post: Post; onClose: (
             </div>
 
             {/* Photos (node 202316:528930) */}
-            <div style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
-              position: 'relative', flexShrink: 0,
-              overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'none',
-              marginLeft: -40, marginRight: -16, paddingLeft: 40, paddingRight: 16,
-            }}>
+            <div
+              ref={photoScrollRef}
+              style={{
+                alignSelf: 'stretch',
+                overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'none',
+                marginLeft: -40, marginRight: -16,
+                paddingLeft: 40, paddingRight: 100,
+                paddingTop: 10, marginTop: -10,
+                scrollSnapType: 'x proximity',
+              }}
+            >
               <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexShrink: 0, width: 520 }}>
                 {post.photos.map((src, i) => (
-                  <div key={i} style={{
-                    height: 180, position: 'relative', borderRadius: 12.915,
-                    flexShrink: 0, width: 161.435, overflow: 'hidden',
-                  }}>
+                  <motion.div
+                    key={i}
+                    style={{
+                      height: 180, width: 161.435, flexShrink: 0,
+                      borderRadius: 12.915, overflow: 'hidden', position: 'relative',
+                      rotate: photoTilt,
+                      y: photoY,
+                      boxShadow: photoShadow,
+                      willChange: 'transform',
+                      scrollSnapAlign: 'center',
+                    }}
+                  >
                     <img src={src} alt="" style={{
                       position: 'absolute', inset: 0, maxWidth: 'none', objectFit: 'cover',
-                      pointerEvents: 'none', borderRadius: 12.915, width: '100%', height: '100%',
+                      pointerEvents: 'none', width: '100%', height: '100%',
                     }} />
-                  </div>
+                  </motion.div>
                 ))}
               </div>
             </div>
