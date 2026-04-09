@@ -126,15 +126,25 @@ function ThreadLine() {
  * HEART REACTION — ANIMATION STORYBOARD
  *
  *  On bubble tap:
- *    0ms   anchor ❤️  (22px): scale 0→1  spring s:500 d:22   top:-22 right:-10
- *   70ms   heart  ❤️  (16px): scale 0→1  spring s:500 d:22   top: -6 right:-20  rotate:14°
- *  130ms   heart  ❤️  (13px): scale 0→1  spring s:500 d:22   top:  4 right:-26  rotate:-7°
- *    0ms   ripple: scale 0.8→1.6  opacity 0.2→0  450ms ease-out
+ *    0ms   anchor ❤️ in WHITE PILL badge: springs into top-right corner
+ *          spring s:500 d:22
  *
- *  Hearts persist (stay visible after like).
- *  Re-tap re-keys hearts → entrance spring re-fires.
+ *    0ms   heart A (13px): falls DOWN right side of bubble → absorbed
+ *          at bubble's bottom edge (overflow:hidden clip). 520ms ease-in.
+ *          → ripple fires at bottom-right at t=520ms
+ *   90ms   heart B (11px): same path, slight x drift. 500ms ease-in.
+ *          → ripple fires at bottom-right at t=590ms
+ *
+ *  Ripple: scale 0.6→2.2, opacity 0.3→0, pink, 440ms ease-out
+ *  Hearts persist. Re-tap re-keys → springs re-fire.
  * ─────────────────────────────────────────────────────────
  */
+
+const FALL_HEARTS = [
+  { delay: 0,    duration: 520, startRight: 8,  size: 13 },
+  { delay: 90,   duration: 500, startRight: 4,  size: 11 },
+] as const
+
 function CommentItem({
   comment,
   entryDelay = 0,
@@ -150,9 +160,15 @@ function CommentItem({
   const handleLike = useCallback(() => {
     setLiked(true)
     setRound(r => r + 1)
-    const id = ++rippleCounter.current
-    setRipples(prev => [...prev, id])
-    setTimeout(() => setRipples(prev => prev.filter(r => r !== id)), 600)
+
+    // Ripple fires when each heart reaches the bubble's bottom edge
+    FALL_HEARTS.forEach(h => {
+      setTimeout(() => {
+        const id = ++rippleCounter.current
+        setRipples(prev => [...prev, id])
+        setTimeout(() => setRipples(prev => prev.filter(r => r !== id)), 600)
+      }, h.delay + h.duration)
+    })
   }, [])
 
   return (
@@ -204,71 +220,71 @@ function CommentItem({
             maxWidth: '100%',
           }}
         >
-          {/* ── Floating emoji hearts (persistent, re-spring on each tap) ── */}
-          {liked && (
-            <>
-              {/* Anchor — large ❤️ floats above-right of bubble */}
-              <motion.span
+          {/* ── Anchor: white pill badge springs into top-right corner ── */}
+          <AnimatePresence>
+            {liked && (
+              <motion.div
                 key={`anchor-${round}`}
                 style={{
-                  position: 'absolute', top: -22, right: -10,
-                  fontSize: 22, lineHeight: 1,
-                  pointerEvents: 'none', zIndex: 10, display: 'block',
+                  position: 'absolute', top: -14, right: -12,
+                  background: 'white',
+                  borderRadius: 999,
+                  padding: '3px 5px',
+                  boxShadow: '0 1px 4px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.05)',
+                  pointerEvents: 'none', zIndex: 10,
+                  display: 'flex', alignItems: 'center',
                 }}
-                initial={{ scale: 0, opacity: 0 }}
+                initial={{ scale: 0.7, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.7, opacity: 0 }}
                 transition={{ type: 'spring', stiffness: 500, damping: 22 }}
               >
-                ❤️
-              </motion.span>
+                <span style={{ fontSize: 16, lineHeight: 1 }}>❤️</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-              {/* Heart 2 — medium, below anchor, tilted right */}
+          {/* ── Falling hearts — clipped by right-side strip, absorbed at bottom ── */}
+          {/* top:0 bottom:0 = exact bubble height → overflow:hidden clips at bubble bottom */}
+          <div style={{
+            position: 'absolute', top: 0, bottom: 0, right: 0,
+            width: 32, overflow: 'hidden', pointerEvents: 'none', zIndex: 8,
+          }}>
+            {round > 0 && FALL_HEARTS.map((h, i) => (
               <motion.span
-                key={`h2-${round}`}
+                key={`${round}-fall-${i}`}
                 style={{
-                  position: 'absolute', top: -5, right: -20,
-                  fontSize: 16, lineHeight: 1, rotate: '14deg',
-                  pointerEvents: 'none', zIndex: 9, display: 'block',
+                  position: 'absolute', top: 4, right: h.startRight,
+                  fontSize: h.size, lineHeight: 1,
                 }}
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{ scale: 1, opacity: 0.88 }}
-                transition={{ type: 'spring', stiffness: 500, damping: 22, delay: 0.07 }}
+                initial={{ y: 0, x: 0, opacity: 0.9 - i * 0.2 }}
+                animate={{ y: 200, x: i === 0 ? 3 : -2 }}
+                transition={{
+                  y: { delay: h.delay / 1000, duration: h.duration / 1000, ease: [0.4, 0, 1, 1] },
+                  x: { delay: h.delay / 1000, duration: h.duration / 1000, ease: 'easeIn' },
+                  opacity: { duration: 0 },
+                }}
               >
                 ❤️
               </motion.span>
+            ))}
+          </div>
 
-              {/* Heart 3 — small, below h2, tilted left */}
-              <motion.span
-                key={`h3-${round}`}
-                style={{
-                  position: 'absolute', top: 5, right: -27,
-                  fontSize: 13, lineHeight: 1, rotate: '-7deg',
-                  pointerEvents: 'none', zIndex: 8, display: 'block',
-                }}
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{ scale: 1, opacity: 0.68 }}
-                transition={{ type: 'spring', stiffness: 500, damping: 22, delay: 0.13 }}
-              >
-                ❤️
-              </motion.span>
-            </>
-          )}
-
-          {/* Ripple — soft pink pulse on tap */}
+          {/* ── Ripple at bottom-right — fires when each heart is absorbed ── */}
           <AnimatePresence>
             {ripples.map(id => (
               <motion.div
                 key={id}
                 style={{
-                  position: 'absolute', top: -8, right: -2,
-                  width: 22, height: 22, borderRadius: '50%',
-                  background: 'rgba(239,68,68,0.18)',
-                  pointerEvents: 'none', zIndex: 2, transformOrigin: 'center',
+                  position: 'absolute', bottom: 4, right: 6,
+                  width: 18, height: 18, borderRadius: '50%',
+                  background: 'rgba(239,68,68,0.28)',
+                  pointerEvents: 'none', zIndex: 6, transformOrigin: 'center',
                 }}
-                initial={{ scale: 0.8, opacity: 0.2 }}
-                animate={{ scale: 1.6, opacity: 0 }}
+                initial={{ scale: 0.6, opacity: 0.3 }}
+                animate={{ scale: 2.2, opacity: 0 }}
                 exit={{}}
-                transition={{ duration: 0.45, ease: 'easeOut' }}
+                transition={{ duration: 0.44, ease: 'easeOut' }}
               />
             ))}
           </AnimatePresence>
