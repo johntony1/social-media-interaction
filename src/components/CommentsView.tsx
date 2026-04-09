@@ -32,7 +32,7 @@
  * ───────────────────────────────────────────────────────── */
 
 import { motion, AnimatePresence, useTransform } from 'framer-motion'
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useScrollTilt } from '../hooks/useScrollTilt'
 import type { Post } from './ExpandedPost'
 import {
@@ -40,6 +40,42 @@ import {
   SPRING_SOFT,
   EASE_IN,
 } from './ExpandedPost'
+
+// ── Emoji picker data (ported from Live chat project) ──────
+const EMOJI_ANIM: Record<string, string> = {
+  '😀':'laugh','😃':'laugh','😄':'laugh','😁':'laugh','😆':'laugh','😅':'laugh','🤣':'laugh','😂':'laugh',
+  '😉':'wink','😜':'wink','😝':'wink','🤪':'wink',
+  '🙂':'float','😊':'float','😇':'float','🥲':'float','😋':'float','😛':'float',
+  '🥰':'pulse','😍':'pulse','🤩':'pulse','😘':'pulse','😗':'float','😚':'float','😙':'float',
+  '❤️':'pulse','🧡':'pulse','💛':'pulse','💚':'pulse','💙':'pulse','💜':'pulse',
+  '🖤':'pulse','🤍':'pulse','🤎':'pulse','💔':'shake','❣️':'pulse',
+  '💕':'pulse','💞':'pulse','💓':'pulse','💗':'pulse','💖':'pulse','💘':'pulse','💝':'pulse',
+  '😭':'cry','🥹':'cry',
+  '😤':'shake','😡':'shake','🤬':'shake','😠':'shake',
+  '🤔':'nod','🤐':'nod','🧐':'nod','😐':'nod','😑':'nod','🙄':'nod',
+  '😱':'bounce','😲':'bounce','🤯':'bounce',
+  '😔':'cry','😢':'cry','😞':'cry','😟':'cry',
+  '🎉':'tada','🎊':'tada','🎈':'tada',
+  '🔥':'flicker',
+  '✨':'spin','⭐':'spin','🌟':'spin','💫':'spin',
+  '👍':'bounce','👎':'bounce','👏':'bounce','🙌':'bounce','🤝':'bounce','🙏':'bounce',
+  '💯':'bounce',
+  '🍕':'wobble','🍔':'wobble','🍟':'wobble','🌮':'wobble','🧁':'wobble','🍰':'wobble',
+  '🎂':'wobble','🍭':'wobble','🍫':'wobble','🍿':'wobble',
+  '🌸':'float','🌺':'float','🌻':'float','🌹':'float','🍀':'float','🌿':'float',
+  '🍃':'float','🌱':'float','🌲':'float','🌳':'float','🌴':'float','🌵':'float',
+  '🌙':'float','🌈':'float','☁️':'float',
+  '🐶':'bounce','🐱':'bounce','🐰':'bounce','🐸':'bounce','🐵':'bounce','🦆':'bounce',
+}
+
+const EMOJI_CATEGORIES = [
+  { id: 'recent',   tabIcon: '🕐', label: 'Recent',   emojis: ['😀','😂','❤️','👍','🙏','😍','🎉','✨','🔥','💯','😊','🥰','😭','🤣','😤','🥹','🫶','💀','👀','😎'] },
+  { id: 'smileys',  tabIcon: '😊', label: 'Smileys',  emojis: ['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','😊','😇','🥰','😍','🤩','😘','😗','😚','😙','🥲','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔'] },
+  { id: 'gestures', tabIcon: '👋', label: 'Gestures', emojis: ['👍','👎','👌','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','☝️','👇','✋','🤚','🖐️','🖖','👋','🤏','✍️','💅','💪','🤲','🙌','👏','🫶','🤝','🙏','✊'] },
+  { id: 'hearts',   tabIcon: '❤️', label: 'Hearts',   emojis: ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','❤️‍🔥','❤️‍🩹','💌','💋','😍','🥰','😘'] },
+  { id: 'nature',   tabIcon: '🌿', label: 'Nature',   emojis: ['🌸','🌺','🌻','🌹','🍀','🌿','🍃','🌱','🌲','🌳','🌴','🌵','🌾','🍄','🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🙈','🦆','🐧','🐦','🌙','⭐','🌟','💫','☁️','🌈'] },
+  { id: 'food',     tabIcon: '🍕', label: 'Food',     emojis: ['🍕','🍔','🍟','🌮','🌯','🥙','🥚','🍳','🥘','🍜','🍝','🍣','🍱','🍤','🧁','🍰','🎂','🍭','🍫','🍿','🥤','🧋','☕','🍵','🥂','🍷','🍸','🍹','🧃','🍺','🍻','🍾','🍦','🍩','🍪'] },
+]
 
 // ── Shared shadow (custom-shadows/medium) ──────────────────
 const CARD_SHADOW = [
@@ -315,6 +351,32 @@ function CommentInput({
   onChange: (v: string) => void
   onSubmit: () => void
 }) {
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [selectedCategory, setSelectedCategory] = useState('recent')
+  const pickerRef = useRef<HTMLDivElement>(null)
+  const emojiBtnRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Close picker on outside click
+  useEffect(() => {
+    if (!pickerOpen) return
+    const handler = (e: MouseEvent) => {
+      if (
+        pickerRef.current?.contains(e.target as Node) ||
+        emojiBtnRef.current?.contains(e.target as Node)
+      ) return
+      setPickerOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [pickerOpen])
+
+  const insertEmoji = (emoji: string) => {
+    onChange(value + emoji)
+    setPickerOpen(false)
+    inputRef.current?.focus()
+  }
+
   return (
     <motion.div
       style={{
@@ -331,6 +393,83 @@ function CommentInput({
       animate={{ opacity: 1, y: 0, transition: { ...SPRING_SOFT, delay: 0.32 } }}
       exit={{ opacity: 0, y: 4, transition: { duration: 0.08, ease: EASE_IN, delay: 0 } }}
     >
+      {/* Emoji picker panel — floats above input */}
+      {pickerOpen && (
+        <div
+          ref={pickerRef}
+          className="emoji-picker-enter"
+          style={{
+            position: 'absolute',
+            bottom: 'calc(100% + 8px)',
+            left: 12,
+            width: 260,
+            borderRadius: 14,
+            background: 'white',
+            padding: 6,
+            boxShadow: '0px 0px 0px 1px #ebebeb, 0px 8px 24px rgba(10,13,20,0.12), 0px 2px 4px rgba(10,13,20,0.06)',
+            zIndex: 200,
+          }}
+        >
+          {/* Category tabs */}
+          <div style={{ display: 'flex', gap: 2, paddingBottom: 6 }}>
+            {EMOJI_CATEGORIES.map(cat => (
+              <button
+                key={cat.id}
+                title={cat.label}
+                onClick={() => setSelectedCategory(cat.id)}
+                style={{
+                  width: 28, height: 28, flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  borderRadius: 7, border: 'none', cursor: 'pointer',
+                  background: selectedCategory === cat.id ? '#f5f5f5' : 'transparent',
+                  fontSize: 14, lineHeight: 1,
+                  transition: 'background 100ms ease',
+                }}
+              >
+                {cat.tabIcon}
+              </button>
+            ))}
+          </div>
+
+          {/* Divider */}
+          <div style={{ height: 1, background: '#ebebeb', marginBottom: 6 }} />
+
+          {/* Category label */}
+          <p style={{
+            margin: '0 0 4px 2px',
+            fontSize: 10, fontWeight: 500, letterSpacing: '0.06em',
+            color: '#a3a3a3', textTransform: 'uppercase',
+            fontFamily: "'Inter', sans-serif",
+            fontFeatureSettings: "'ss11' 1, 'calt' 0, 'liga' 0",
+          }}>
+            {EMOJI_CATEGORIES.find(c => c.id === selectedCategory)?.label}
+          </p>
+
+          {/* Emoji grid */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)',
+            gap: 1, maxHeight: 176, overflowY: 'auto',
+          }}>
+            {EMOJI_CATEGORIES.find(c => c.id === selectedCategory)?.emojis.map((emoji, i) => (
+              <button
+                key={`${selectedCategory}-${i}`}
+                onClick={() => insertEmoji(emoji)}
+                data-anim={(EMOJI_ANIM[emoji]) ?? undefined}
+                className="emoji-btn"
+                style={{
+                  width: 28, height: 28,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  borderRadius: 6, border: 'none', cursor: 'pointer',
+                  background: 'transparent', fontSize: 16, lineHeight: 1,
+                }}
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Avatar (node 202316:528947) — 28px */}
       <div style={{
         background: '#ebebeb',
@@ -373,6 +512,7 @@ function CommentInput({
         position: 'relative',
       }}>
         <input
+          ref={inputRef}
           type="text"
           value={value}
           onChange={e => onChange(e.target.value)}
@@ -399,7 +539,7 @@ function CommentInput({
           }}
         />
 
-        {/* Send button — appears when there's text */}
+        {/* Send button / Emoji toggle */}
         <AnimatePresence>
           {value.trim() ? (
             <motion.button
@@ -407,16 +547,9 @@ function CommentInput({
               onClick={onSubmit}
               aria-label="Send comment"
               style={{
-                border: 'none',
-                background: 'none',
-                cursor: 'pointer',
-                padding: 0,
-                flexShrink: 0,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 20,
-                height: 20,
+                border: 'none', background: 'none', cursor: 'pointer', padding: 0,
+                flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: 20, height: 20,
               }}
               initial={{ opacity: 0, scale: 0.6 }}
               animate={{ opacity: 1, scale: 1, transition: { type: 'spring', stiffness: 400, damping: 22 } }}
@@ -424,22 +557,24 @@ function CommentInput({
               whileTap={{ scale: 0.85 }}
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path
-                  d="M13.5 8L2.5 8M13.5 8L9.5 4M13.5 8L9.5 12"
-                  stroke="#171717"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
+                <path d="M13.5 8L2.5 8M13.5 8L9.5 4M13.5 8L9.5 12"
+                  stroke="#171717" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </motion.button>
           ) : (
             <motion.div
               key="emoji"
-              style={{ overflow: 'hidden', flexShrink: 0, width: 24, height: 24, position: 'relative' }}
+              ref={emojiBtnRef}
+              onClick={() => setPickerOpen(o => !o)}
+              style={{
+                overflow: 'hidden', flexShrink: 0, width: 24, height: 24,
+                position: 'relative', cursor: 'pointer',
+                opacity: pickerOpen ? 1 : undefined,
+              }}
               initial={{ opacity: 0, scale: 0.6 }}
               animate={{ opacity: 1, scale: 1, transition: { type: 'spring', stiffness: 400, damping: 22 } }}
               exit={{ opacity: 0, scale: 0.6, transition: { duration: 0.12 } }}
+              whileTap={{ scale: 0.85 }}
             >
               <div style={{ position: 'absolute', inset: '6%' }}>
                 <img src="/assets/icon-emoji.svg" alt="" style={{
