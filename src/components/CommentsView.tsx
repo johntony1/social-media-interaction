@@ -401,7 +401,7 @@ function CommentInput({
           style={{
             position: 'absolute',
             bottom: 'calc(100% + 8px)',
-            left: 12,
+            right: 12,
             width: 260,
             borderRadius: 14,
             background: 'white',
